@@ -9,7 +9,7 @@ from nltk.corpus import PlaintextCorpusReader
 from helpers import remove_stop_words, get_top_N_words
 
 # switch to 'Gutenberg/text' for all the books.
-DATA_DIR = '/Users/ratuljain/PycharmProjects/CSCI720proj/Gutenberg/test'
+DATA_DIR = './Gutenberg/test'
 file_list = [f for f in listdir(DATA_DIR) if isfile(join(DATA_DIR, f))]
 corpus = PlaintextCorpusReader(DATA_DIR, '.*.txt')
 files = corpus.fileids()

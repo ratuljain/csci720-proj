@@ -6,7 +6,7 @@ Date: 03-27-2010
 
 
 ### Introduction: 
-This is the README.md file for instruction to use the term project usage.
+This README.md file provides instructions to use the term project.
 
 
 ### Requirements: 

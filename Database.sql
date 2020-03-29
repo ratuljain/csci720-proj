@@ -1,5 +1,5 @@
 
-create database Authorship_Attribution
+create database Authorship_Attribution;
 
 use Authorship_Attribution;
 
@@ -16,4 +16,5 @@ CREATE TABLE author1
 	comma int,
 	special int,
 	uppercase int
-)
+);
+

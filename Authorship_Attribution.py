@@ -13,17 +13,21 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn import metrics
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics import plot_confusion_matrix
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.decomposition import PCA
 from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 DATA_DIR = r"Gutenberg/test1/"
 DATABASE_USER = 'root'
 DATABASE_USER_PASSWORD = 'password'
 DATABASE_HOST = 'localhost'
 DATABASE_NAME = 'Authorship_Attribution'
+DATABASE_TABLE = 'author1'
 DATABASE_CONNECTION = "mysql+pymysql://" + DATABASE_USER + ":" + DATABASE_USER_PASSWORD + "@" + DATABASE_HOST + "/" + DATABASE_NAME
 
 
@@ -35,11 +39,19 @@ def pre_processing():
 
 def get_author_and_file_path():
     author, text = [], []
-    DATA_DIR = r"Gutenberg/test1/"
     for file in glob.glob(f"{DATA_DIR}*.txt"):
         author.append(file.split("/")[-1].split("__")[0])
         text.append(file)
     return author, text
+
+
+def get_authors_and_text_list(author, file_path):
+    authors, text = [], []
+    for auth, file in zip(author, file_path):
+        name, sentence = get_author_and_text(auth, file)
+        authors.extend(name)
+        text.extend(sentence)
+    return authors, text
 
 
 def get_author_and_text(author, file):
@@ -53,15 +65,6 @@ def get_author_and_text(author, file):
         authors.append(author)
         para = para.replace("\n", "")
         text.append(para)
-    return authors, text
-
-
-def get_authors_and_text_list(author, file_path):
-    authors, text = [], []
-    for auth, file in zip(author, file_path):
-        name, sentence = get_author_and_text(auth, file)
-        authors.extend(name)
-        text.extend(sentence)
     return authors, text
 
 
@@ -128,12 +131,12 @@ def connect_to_database():
     return engine
 
 
-def disconnect_to_database():
-    pass
+def disconnect_to_database(engine):
+    engine.dispose()
 
 
 def write_to_database(engine, df):
-    df.to_sql(con=engine, name='author1', if_exists='replace', chunksize=5000)
+    df.to_sql(con=engine, name=DATABASE_TABLE, if_exists='replace', chunksize=5000)
 
 
 def read_from_database(engine):
@@ -142,34 +145,32 @@ def read_from_database(engine):
     return df1
 
 
-def train_naive_bayes_model(X_train, y_train):
-    gnb = MultinomialNB()
-    gnb.fit(X_train, y_train)
-    return gnb
-
-
-def naive_bayes(X_train, y_train, X_test, y_test):
+def naive_bayes(X_train, y_train, X_test, y_test, classes):
     gnb = MultinomialNB()
     gnb.fit(X_train, y_train)
     y_pred = gnb.predict(X_test)
-    # accuracy = gnb.score(X_test, y_test)
-    print(f"Accuracy: {100 * accuracy_score(y_test, y_pred):2.4f}%")
-    conf = confusion_matrix(y_test, y_pred)
-    print(conf)
-    plt.imshow(conf, cmap='binary', interpolation='None')
+    print(f"Naive Bayes - Accuracy: {100 * accuracy_score(y_test, y_pred):2.4f}%")
+    cnf_matrix = confusion_matrix(y_test, y_pred)
+    print(cnf_matrix)
+
+    np.set_printoptions(precision=2)
+    plt.figure(figsize=(8, 6))
+    display = plot_confusion_matrix(gnb, X_test, y_test, display_labels=classes, cmap=plt.cm.Blues, normalize='true')
+    display.ax_.set_title('Confusion matrix')
     plt.show()
 
 
 def kmeans_print_optimal_k(X):
     wass = []
     for i in range(1, 11):
-        KM = KMeans(n_clusters=i, max_iter=500)
+        KM = KMeans(init='k-means++', n_clusters=i, max_iter=500)
         KM.fit(X)
         wass.append(KM.inertia_)
 
     plt.plot(range(1, 11), wass, color='green', linewidth='3')
     plt.xlabel("K")
     plt.ylabel("Sqaured Error (wass)")
+    plt.figure(figsize=(15, 15))
     plt.show()
 
 
@@ -177,80 +178,92 @@ def kmeans(X, y):
     # print no of optimal K
     kmeans_print_optimal_k(X)
 
-    X11 = X.to_numpy()
-    kmeans = KMeans(n_clusters=5)
-    kmeans.fit(X11)
-    y_kmeans = kmeans.predict(X11)
-    # accuracy = gnb.score(X_test, y_test)
-    plt.scatter(X11[:, 0], X11[:, 1], c=y_kmeans, s=50, cmap='viridis')
-    plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], c='black', s=50, alpha=0.5)
+    X = X.to_numpy()
+    kmeans = KMeans(init='k-means++', n_clusters=6)
+    kmeans.fit(X)
+    y_kmeans = kmeans.predict(X)
+
+    plt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=100, cmap='viridis')
+    plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], c='red', s=100, alpha=0.5)
+    plt.figure(figsize=(15, 15))
+    plt.show()
+
+
+def kmeans_pairwise_comparison(df):
+    sns.pairplot(data=df, hue="authors")
+
+
+def kmeans_print_accuracy(y_actual, y_predict, kmeans_type):
+    accuracy_count = 0
+    print(y_actual)
+    print(y_predict)
+    for i in range(len(y_actual)):
+        if y_actual[i] == y_predict[i]:
+            accuracy_count += 1
+    print(f"K-Means - {kmeans_type} Accuracy: {100 * accuracy_count / len(y_actual):2.4f}%")
 
 
 def kmeans_classification(X, y):
     X = X.to_numpy()
-    kmeans = KMeans(n_clusters=5)
-    kmeans.fit(X)
-
     labelEncoder = LabelEncoder()
-    labelEncoder.fit(y)
-    y_actual_encoded = labelEncoder.transform(y)
+    y_encoded = labelEncoder.fit_transform(y)
+    #     X_actual = X
+    X_actual, y_actual = shuffle(X, y_encoded, random_state=0)
 
-    X_actual, y_actual = shuffle(X, y_actual_encoded, random_state=0)
-
-    accuracy_count = 0
-    for i in range(len(X_actual)):
-        X_predict = X_actual.to_numpy()[i]
-        X_predict = X_predict.reshape(-1, len(X_predict))
-        y_predict = kmeans.predict(X_predict)
-        if y_actual[i] == y_predict[0]:
-            accuracy_count += 1
-
-    print(f"Accuracy: {100 * accuracy_count / len(X):2.4f}%")
+    kmeans = KMeans(init='k-means++', n_clusters=6)
+    kmeans.fit(X_actual)
+    y_kmeans = kmeans.predict(X_actual)
+    kmeans_print_accuracy(y_actual, y_kmeans, 'Standard')
 
     # max scaler
     scaler = MinMaxScaler()
     X_scaled = scaler.fit_transform(X)
     kmeans.fit(X_scaled)
+    y_scaled = kmeans.predict(X_scaled)
+    kmeans_print_accuracy(y_actual, y_scaled, 'With Scaling')
 
-
-    accuracy_count = 0
-    for i in range(len(X_actual)):
-        X_predict = X_actual.to_numpy()[i]
-        X_predict = X_predict.reshape(-1, len(X_predict))
-        y_predict = kmeans.predict(X_predict)
-        if y_actual[i] == y_predict[0]:
-            accuracy_count += 1
-
-    print(f"Accuracy: {100 * accuracy_count / len(X):2.4f}%")
+    # PCA
+    pca = PCA(n_components=7)
+    X_pca = pca.fit_transform(X)
+    kmeans.fit(X_pca)
+    y_pca = kmeans.predict(X_pca)
+    kmeans_print_accuracy(y_actual, y_pca, 'With PCA')
 
 
 def authorship_attribution():
+    # pre-processing
     authors, sentences = pre_processing()
-    # Create pandas data frame
     df = pd.DataFrame()
     df['authors'], df['sentences'] = authors, sentences
+    classes = list(set(authors))
     del authors
     del sentences
 
+    # Get all features
     df['features'] = df['sentences'].apply(lambda sentence: get_features(sentence))
     df[['para_len', 'sent', 'sent_max_len', 'word', 'unique_word', 'stop_words', 'comma', 'special', 'uppercase']] = \
         pd.DataFrame(df.features.values.tolist(), index=df.index)
     del df['features']
 
-    connection = connect_to_database()
-    write_to_database(connection, df)
+    # Write to DB
+    # connection = connect_to_database()
+    # write_to_database(connection, df)
 
     # Read from DB
     # df1 = pd.DataFrame()
     # df1 = read_from_database(connection)
 
+    # X, y and split
     X, y = df.iloc[:, 3:], df.iloc[:, 0]
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
 
     # Naive Bayes
-    naive_bayes(X_train, y_train, X_test, y_test)
-
+    naive_bayes(X_train, y_train, X_test, y_test, classes)
+    # K-Means pairwise
+    # kmeans_pairwise_comparison(df)
+    # K-Means clustering
     kmeans(X, y)
+    # K-Means classification
     kmeans_classification(X, y)
 
 

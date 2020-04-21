@@ -53,6 +53,10 @@ a) By executing below command: <br>
         1) Model accuracy
         2) Confusion matrix
         3) Plots
+    SVM:
+        1) Model accuracy
+        2) Confusion matrix
+        3) Plots
     K-Means
         1) Pairewise plot
         2) Knee graph

@@ -9,6 +9,7 @@ import statistics
 import string
 
 from sklearn.naive_bayes import MultinomialNB
+from sklearn import svm
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn import metrics
@@ -21,8 +22,9 @@ from sklearn.decomposition import PCA
 from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 import seaborn as sns
+from wordcloud import WordCloud, STOPWORDS
 
-DATA_DIR = r"Gutenberg/test1/"
+DATA_DIR = r"Gutenberg/actual/"
 DATABASE_USER = 'root'
 DATABASE_USER_PASSWORD = 'password'
 DATABASE_HOST = 'localhost'
@@ -101,14 +103,14 @@ def get_features(paragraph):
                 special_char += 1
         if word.isupper():
             uppercase += 1
-            # if tag in ('AT', 'DT'):
-            #     articles += 1
-            # if tag in ('NNP', 'NOUN'):
-            #     nouns += 1
-            # if tag in ('VBD', 'VERB'):
-            #     verbs += 1
-            # if tag in ('PRP', 'PRON'):
-            #     pronouns += 1
+        # if tag in ('AT', 'DT'):
+        #     articles += 1
+        # if tag in ('NNP', 'NOUN'):
+        #     nouns += 1
+        # if tag in ('VBD', 'VERB'):
+        #     verbs += 1
+        # if tag in ('PRP', 'PRON'):
+        #     pronouns += 1
 
     feature_set.append(para)
     feature_set.append(sent)
@@ -119,10 +121,10 @@ def get_features(paragraph):
     feature_set.append(commas)
     feature_set.append(special_char)
     feature_set.append(uppercase)
-    #     feature_set.append(articles)
-    #     feature_set.append(nouns)
-    #     feature_set.append(verbs)
-    #     feature_set.append(pronouns)
+    # feature_set.append(articles)
+    # feature_set.append(nouns)
+    # feature_set.append(verbs)
+    # feature_set.append(pronouns)
     return feature_set
 
 
@@ -145,6 +147,21 @@ def read_from_database(engine):
     return df1
 
 
+def print_word_cloud(df):
+    stop_words = set(stopwords.words('english'))
+    stop_words.update(set(STOPWORDS))
+
+    for name, group in df:
+        temp_sent = ' '.join(group['sentences'])
+        word_cloud = WordCloud(max_font_size=50, stopwords=stop_words,
+                               relative_scaling=0.5, normalize_plurals=False).generate(temp_sent)
+        plt.imshow(word_cloud, interpolation='bilinear')
+        plt.title(name)
+        plt.axis("off")
+        plt.savefig(f"{name}.png")
+        # plt.show()
+
+
 def naive_bayes(X_train, y_train, X_test, y_test, classes):
     gnb = MultinomialNB()
     gnb.fit(X_train, y_train)
@@ -157,60 +174,76 @@ def naive_bayes(X_train, y_train, X_test, y_test, classes):
     plt.figure(figsize=(8, 6))
     display = plot_confusion_matrix(gnb, X_test, y_test, display_labels=classes, cmap=plt.cm.Blues, normalize='true')
     display.ax_.set_title('Confusion matrix')
-    plt.show()
+    plt.savefig("Naive_Bayes.png")
+    # plt.show()
+
+
+def support_vector_machine(X_train, y_train, X_test, y_test, classes):
+    svm_clf = svm.SVC(kernel='linear')
+    svm_clf.fit(X_train, y_train)
+    y_pred = svm_clf.predict(X_test)
+    print(f"SVM - Accuracy: {100 * accuracy_score(y_test, y_pred):2.4f}%")
+    cnf_matrix = confusion_matrix(y_test, y_pred)
+    print(cnf_matrix)
+
+    np.set_printoptions(precision=2)
+    plt.figure(figsize=(8, 6))
+    display = plot_confusion_matrix(svm_clf, X_test, y_test, display_labels=classes, cmap=plt.cm.Blues, normalize='true')
+    display.ax_.set_title('Confusion matrix')
+    plt.savefig("SVM.png")
+    # plt.show()
+
+
+def kmeans_pairwise_comparison(df):
+    sns_plot = sns.pairplot(data=df, hue="authors")
+    sns_plot.savefig("Pairwise_Comparison_of_Features.png")
 
 
 def kmeans_print_optimal_k(X):
     wass = []
-    for i in range(1, 11):
+    for i in range(1, 21):
         KM = KMeans(init='k-means++', n_clusters=i, max_iter=500)
         KM.fit(X)
         wass.append(KM.inertia_)
 
-    plt.plot(range(1, 11), wass, color='green', linewidth='3')
+    plt.plot(range(1, 21), wass, color='green', linewidth='3')
     plt.xlabel("K")
     plt.ylabel("Sqaured Error (wass)")
-    plt.figure(figsize=(15, 15))
-    plt.show()
+    plt.savefig("Optimal-k.png")
+    # plt.show()
 
 
-def kmeans(X, y):
+def kmeans(X, y, cluster):
     # print no of optimal K
     kmeans_print_optimal_k(X)
 
     X = X.to_numpy()
-    kmeans = KMeans(init='k-means++', n_clusters=6)
+    kmeans = KMeans(init='k-means++', n_clusters=cluster)
     kmeans.fit(X)
     y_kmeans = kmeans.predict(X)
 
     plt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=100, cmap='viridis')
     plt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], c='red', s=100, alpha=0.5)
-    plt.figure(figsize=(15, 15))
-    plt.show()
-
-
-def kmeans_pairwise_comparison(df):
-    sns.pairplot(data=df, hue="authors")
+    plt.savefig("k-Means.png")
+    # plt.show()
 
 
 def kmeans_print_accuracy(y_actual, y_predict, kmeans_type):
     accuracy_count = 0
-    print(y_actual)
-    print(y_predict)
     for i in range(len(y_actual)):
         if y_actual[i] == y_predict[i]:
             accuracy_count += 1
     print(f"K-Means - {kmeans_type} Accuracy: {100 * accuracy_count / len(y_actual):2.4f}%")
 
 
-def kmeans_classification(X, y):
+def kmeans_classification(X, y, cluster):
     X = X.to_numpy()
     labelEncoder = LabelEncoder()
     y_encoded = labelEncoder.fit_transform(y)
     #     X_actual = X
     X_actual, y_actual = shuffle(X, y_encoded, random_state=0)
 
-    kmeans = KMeans(init='k-means++', n_clusters=6)
+    kmeans = KMeans(init='k-means++', n_clusters=cluster)
     kmeans.fit(X_actual)
     y_kmeans = kmeans.predict(X_actual)
     kmeans_print_accuracy(y_actual, y_kmeans, 'Standard')
@@ -223,7 +256,7 @@ def kmeans_classification(X, y):
     kmeans_print_accuracy(y_actual, y_scaled, 'With Scaling')
 
     # PCA
-    pca = PCA(n_components=7)
+    pca = PCA(n_components=cluster)
     X_pca = pca.fit_transform(X)
     kmeans.fit(X_pca)
     y_pca = kmeans.predict(X_pca)
@@ -245,9 +278,12 @@ def authorship_attribution():
         pd.DataFrame(df.features.values.tolist(), index=df.index)
     del df['features']
 
+    # print word cloud
+    print_word_cloud(df.groupby('authors'))
+
     # Write to DB
-    # connection = connect_to_database()
-    # write_to_database(connection, df)
+    connection = connect_to_database()
+    write_to_database(connection, df)
 
     # Read from DB
     # df1 = pd.DataFrame()
@@ -257,14 +293,19 @@ def authorship_attribution():
     X, y = df.iloc[:, 3:], df.iloc[:, 0]
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
 
+    # classification
     # Naive Bayes
     naive_bayes(X_train, y_train, X_test, y_test, classes)
+    # SVM
+    support_vector_machine(X_train, y_train, X_test, y_test, classes)
+
+    # clustering
     # K-Means pairwise
-    # kmeans_pairwise_comparison(df)
+    kmeans_pairwise_comparison(df)
     # K-Means clustering
-    kmeans(X, y)
+    kmeans(X, y, len(classes))
     # K-Means classification
-    kmeans_classification(X, y)
+    kmeans_classification(X, y, len(classes))
 
 
 if __name__ == '__main__':
